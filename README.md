@@ -2,12 +2,19 @@
 
 Institutional-style market risk analytics in Python: live index data, log-return analytics, core risk metrics, and a Streamlit analyst shell. Built in **phases** so each layer stays reviewable and deployable.
 
-## Phase 1 (current)
+## Phase 1
 
 - Multi-index ingestion via **yfinance** with **SQLite audit trail** + on-disk Parquet cache
 - **Log returns** and **simple returns** (Sharpe/Sortino use excess **simple** daily returns — industry-consistent)
 - **CAGR**, annualised volatility, **Sharpe**, **Sortino**, **Calmar**, **max drawdown**, drawdown length
-- Streamlit UI: index selection, date range, risk-free rate, metrics table, normalised price chart
+- Streamlit **Overview** tab: metrics table, normalised price chart, CSV export
+
+## Phase 2A (current)
+
+- **Historical VaR / CVaR** (empirical quantile + tail mean) and **Gaussian VaR / CVaR** on simple returns
+- **Skewness**, **excess kurtosis**, **Jarque–Bera** normality test
+- **Annualised** VaR/CVaR via √252 scaling (documented IID shortcut)
+- Streamlit **Tail risk** tab: summary table, histogram vs normal overlay, normal Q-Q plot, CSV export
 
 ## Repository layout
 
@@ -22,7 +29,8 @@ risk-intelligence-platform/
 │   │   └── pipeline.py   # download, validate, align
 │   └── analytics/
 │       ├── returns.py
-│       └── metrics.py
+│       ├── metrics.py
+│       └── tail_risk.py
 └── data_cache/            # created at runtime; gitignored
 ```
 
@@ -38,7 +46,7 @@ streamlit run app.py
 
 ## Roadmap (later phases)
 
-Tail risk (VaR/CVaR), regimes (HMM, GARCH), stress scenarios, portfolio optimisation, AI commentary (Claude), reinsurance framing — each as its own PR-sized phase on top of this data contract.
+Correlation, regimes (HMM, GARCH), stress scenarios, portfolio optimisation, AI commentary (Claude), reinsurance framing — each as its own PR-sized phase on top of this data contract.
 
 ## Data contract (v1)
 
