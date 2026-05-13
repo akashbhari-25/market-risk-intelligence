@@ -28,6 +28,11 @@ from risk_intel.analytics.regime import (
     rolling_volatility,
 )
 from risk_intel.analytics.returns import simple_returns
+from risk_intel.analytics.portfolio import (
+    efficient_frontier_cloud,
+    estimate_mu_cov,
+    optimize_portfolios,
+)
 from risk_intel.analytics.stress import stress_scenario_names, stress_table_for_scenario
 from risk_intel.analytics.tail_risk import compute_tail_risk_table, qq_plot_points
 from risk_intel.config import DEFAULT_TICKERS, RISK_FREE_ANNUAL_DEFAULT
@@ -42,8 +47,8 @@ st.set_page_config(
 
 st.title("Global Market Risk Intelligence Platform")
 st.caption(
-    "Phase 1–4 — live data, core metrics, **tail risk**, **correlation**, **regime/rolling risk**, "
-    "and **stress scenarios**. Next: portfolio optimisation, AI."
+    "Phase 1–5 — live data, core metrics, **tail risk**, **correlation**, **regime/rolling risk**, "
+    "**stress scenarios**, and **portfolio optimisation**. Next: AI / reporting."
 )
 
 with st.sidebar:
@@ -109,8 +114,8 @@ if manifest.warnings:
         for w in manifest.warnings:
             st.write(f"- {w}")
 
-tab_overview, tab_tail, tab_corr, tab_regime, tab_stress = st.tabs(
-    ["Overview", "Tail risk", "Correlation", "Regime & Rolling", "Stress"]
+tab_overview, tab_tail, tab_corr, tab_regime, tab_stress, tab_portfolio = st.tabs(
+    ["Overview", "Tail risk", "Correlation", "Regime & Rolling", "Stress", "Portfolio"]
 )
 
 with tab_overview:
@@ -440,4 +445,67 @@ with tab_stress:
             file_name="gmri_stress.csv",
             mime="text/csv",
             key="dl_stress",
+        )
+
+with tab_portfolio:
+    st.subheader("Portfolio optimisation (mean–variance)")
+    interval_ctx = str(st.session_state.get("interval", interval))
+    long_only = st.checkbox("Long-only weights (sum to 1)", value=True, key="pf_long_only")
+    st.caption(
+        "Uses **sample mean return** and **sample covariance** (PyPortfolioOpt) with annualisation "
+        "matched to your sampling interval. In-sample estimates — not a live trading allocator."
+    )
+
+    pf = optimize_portfolios(panel, interval_ctx, float(rf), long_only=long_only)
+    for note in pf.notes:
+        st.warning(note)
+
+    if pf.weights.empty:
+        st.info("Add more tickers / history, then re-run **Run analysis**.")
+    else:
+        st.markdown("#### Weights")
+        st.dataframe(pf.weights.round(4), use_container_width=True)
+        st.markdown("#### In-sample performance (annualised)")
+        st.dataframe(pf.performance.round(4), use_container_width=True)
+
+        mu_hat, cov_hat, _px = estimate_mu_cov(panel, interval_ctx)
+        wb = (0.0, 1.0) if long_only else (-1.0, 1.0)
+        vols, rets = efficient_frontier_cloud(mu_hat, cov_hat, n_points=40, weight_bounds=wb)
+        if vols:
+            fig_pf = go.Figure()
+            fig_pf.add_trace(
+                go.Scatter(
+                    x=vols,
+                    y=rets,
+                    mode="markers",
+                    name="Target-return frontier (approx.)",
+                    marker=dict(size=7, opacity=0.45),
+                )
+            )
+            fig_pf.add_trace(
+                go.Scatter(
+                    x=pf.performance["ann_vol"],
+                    y=pf.performance["exp_return"],
+                    mode="markers+text",
+                    text=list(pf.performance.index),
+                    textposition="top center",
+                    name="Highlighted portfolios",
+                    marker=dict(size=12),
+                )
+            )
+            fig_pf.update_layout(
+                title="Mean–variance opportunity set (in-sample)",
+                xaxis_title="Annualised volatility",
+                yaxis_title="Annualised expected return",
+            )
+            st.plotly_chart(fig_pf, use_container_width=True)
+
+        pbuf = io.StringIO()
+        pf.weights.to_csv(pbuf)
+        st.download_button(
+            "Download weights CSV",
+            data=pbuf.getvalue(),
+            file_name="gmri_portfolio_weights.csv",
+            mime="text/csv",
+            key="dl_pf_weights",
         )

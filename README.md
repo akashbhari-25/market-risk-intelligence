@@ -30,11 +30,18 @@ Institutional-style market risk analytics in Python: live index data, log-return
 - Regime summary panel: `% time Bull`, `% time Bear`, current regime, current drawdown
 - Streamlit **Regime & Rolling** tab with interactive ticker, benchmark, window, and bear threshold
 
-## Phase 4 (current)
+## Phase 4
 
 - **Stress** tab: preset crisis windows (same definitions as correlation module) plus **full-sample** view
 - Per-ticker and **equal-weight rebalanced** proxy: **cumulative return**, **max drawdown**, **worst period return**, **annualised vol**, **Sharpe**, **observation count**
 - CSV export for the stress table
+
+## Phase 5 (current)
+
+- **Portfolio** tab: **equal weight**, **minimum volatility**, and **maximum Sharpe** (PyPortfolioOpt `EfficientFrontier`, long-only default)
+- In-sample **annualised** expected return / vol / Sharpe table
+- Approximate **efficient frontier** scatter via target-return sweep + highlighted portfolios
+- CSV export of weights
 
 ## Repository layout
 
@@ -53,7 +60,8 @@ risk-intelligence-platform/
 │       ├── tail_risk.py
 │       ├── correlation.py
 │       ├── regime.py
-│       └── stress.py
+│       ├── stress.py
+│       └── portfolio.py
 └── data_cache/            # created at runtime; gitignored
 ```
 
@@ -69,7 +77,7 @@ streamlit run app.py
 
 ## Roadmap (later phases)
 
-Portfolio optimisation, advanced regimes (HMM, GARCH), AI commentary (Claude), reinsurance framing — each as its own PR-sized phase on top of this data contract.
+Advanced regimes (HMM, GARCH), AI commentary (Claude), PDF reporting, reinsurance framing — each as its own PR-sized phase on top of this data contract.
 
 ## Data contract (v1)
 
