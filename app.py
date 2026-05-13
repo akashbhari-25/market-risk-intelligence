@@ -28,6 +28,7 @@ from risk_intel.analytics.regime import (
     rolling_volatility,
 )
 from risk_intel.analytics.returns import simple_returns
+from risk_intel.analytics.stress import stress_scenario_names, stress_table_for_scenario
 from risk_intel.analytics.tail_risk import compute_tail_risk_table, qq_plot_points
 from risk_intel.config import DEFAULT_TICKERS, RISK_FREE_ANNUAL_DEFAULT
 from risk_intel.data.pipeline import load_or_download
@@ -41,8 +42,8 @@ st.set_page_config(
 
 st.title("Global Market Risk Intelligence Platform")
 st.caption(
-    "Phase 1–3A — live data, core metrics, **tail risk**, **correlation**, and **regime/rolling risk**. "
-    "Next: stress tests, optimisation, AI."
+    "Phase 1–4 — live data, core metrics, **tail risk**, **correlation**, **regime/rolling risk**, "
+    "and **stress scenarios**. Next: portfolio optimisation, AI."
 )
 
 with st.sidebar:
@@ -108,8 +109,8 @@ if manifest.warnings:
         for w in manifest.warnings:
             st.write(f"- {w}")
 
-tab_overview, tab_tail, tab_corr, tab_regime = st.tabs(
-    ["Overview", "Tail risk", "Correlation", "Regime & Rolling"]
+tab_overview, tab_tail, tab_corr, tab_regime, tab_stress = st.tabs(
+    ["Overview", "Tail risk", "Correlation", "Regime & Rolling", "Stress"]
 )
 
 with tab_overview:
@@ -416,3 +417,27 @@ with tab_regime:
         s2.metric("% time Bear", f"{pct_bear:.1f}%")
         s3.metric("Current regime", str(current_regime))
         s4.metric("Current drawdown", f"{current_dd:.2%}")
+
+with tab_stress:
+    st.subheader("Stress testing (historical windows)")
+    interval_ctx = str(st.session_state.get("interval", interval))
+    st.caption(
+        "Metrics use **simple returns** on your selected sampling frequency. "
+        "Annualised vol / Sharpe scale with **252 (daily)**, **52 (weekly)**, or **12 (monthly)**. "
+        "Equal-weight row is a **1/N rebalanced each period** proxy (not transaction-cost adjusted)."
+    )
+    scenario = st.selectbox("Scenario", options=stress_scenario_names(), index=0, key="stress_scenario")
+    stress_tbl = stress_table_for_scenario(panel, scenario, interval_ctx, float(rf))
+    if stress_tbl.empty:
+        st.warning("No overlapping data in this window for the current fetch. Widen the date range or use daily data.")
+    else:
+        st.dataframe(stress_tbl.round(4), use_container_width=True)
+        sbuf = io.StringIO()
+        stress_tbl.to_csv(sbuf)
+        st.download_button(
+            "Download stress table CSV",
+            data=sbuf.getvalue(),
+            file_name="gmri_stress.csv",
+            mime="text/csv",
+            key="dl_stress",
+        )
