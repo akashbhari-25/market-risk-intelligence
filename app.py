@@ -20,6 +20,13 @@ from risk_intel.analytics.correlation import (
     upper_triangle_mean,
 )
 from risk_intel.analytics.metrics import compute_core_metrics_table
+from risk_intel.analytics.regime import (
+    drawdown_series,
+    market_regime_from_drawdown,
+    rolling_beta,
+    rolling_sharpe,
+    rolling_volatility,
+)
 from risk_intel.analytics.returns import simple_returns
 from risk_intel.analytics.tail_risk import compute_tail_risk_table, qq_plot_points
 from risk_intel.config import DEFAULT_TICKERS, RISK_FREE_ANNUAL_DEFAULT
@@ -34,8 +41,8 @@ st.set_page_config(
 
 st.title("Global Market Risk Intelligence Platform")
 st.caption(
-    "Phase 1–2B — live data, core metrics, **tail risk**, **correlation** (heatmaps, crisis windows, rolling). "
-    "Next: regimes, stress tests, optimisation, AI."
+    "Phase 1–3A — live data, core metrics, **tail risk**, **correlation**, and **regime/rolling risk**. "
+    "Next: stress tests, optimisation, AI."
 )
 
 with st.sidebar:
@@ -101,7 +108,9 @@ if manifest.warnings:
         for w in manifest.warnings:
             st.write(f"- {w}")
 
-tab_overview, tab_tail, tab_corr = st.tabs(["Overview", "Tail risk", "Correlation"])
+tab_overview, tab_tail, tab_corr, tab_regime = st.tabs(
+    ["Overview", "Tail risk", "Correlation", "Regime & Rolling"]
+)
 
 with tab_overview:
     metrics = compute_core_metrics_table(panel, risk_free_annual=rf)
@@ -316,3 +325,94 @@ with tab_corr:
             mime="text/csv",
             key="dl_corr",
         )
+
+with tab_regime:
+    st.subheader("Regime and rolling risk")
+    rets = simple_returns(panel)
+    tickers_list = list(panel.columns)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        sel_ticker = st.selectbox("Ticker", options=tickers_list, key="reg_ticker")
+    with c2:
+        default_bm_idx = tickers_list.index("^GSPC") if "^GSPC" in tickers_list else 0
+        sel_benchmark = st.selectbox(
+            "Benchmark",
+            options=tickers_list,
+            index=default_bm_idx,
+            key="reg_benchmark",
+        )
+
+    k1, k2 = st.columns(2)
+    with k1:
+        rwin = st.select_slider("Rolling window (sessions)", options=[63, 126, 252], value=126, key="reg_window")
+    with k2:
+        bear_threshold = st.number_input(
+            "Bear threshold (drawdown)",
+            min_value=-0.80,
+            max_value=-0.05,
+            value=-0.20,
+            step=0.01,
+            format="%.2f",
+            key="reg_bear_threshold",
+        )
+
+    px_sel = panel[sel_ticker]
+    r_sel = rets[sel_ticker]
+    r_bm = rets[sel_benchmark]
+
+    roll_vol = rolling_volatility(r_sel, window=int(rwin)).dropna()
+    roll_sh = rolling_sharpe(r_sel, rf_annual=float(rf), window=int(rwin)).dropna()
+    roll_beta = rolling_beta(r_sel, r_bm, window=int(rwin)).dropna()
+    dd = drawdown_series(px_sel)
+    regime = market_regime_from_drawdown(dd, bear_threshold=float(bear_threshold))
+
+    if not roll_vol.empty:
+        fig_vol = px.line(
+            roll_vol,
+            labels={"value": "Annualised volatility", "index": "Date"},
+            title=f"Rolling {rwin}-period volatility — {sel_ticker}",
+        )
+        fig_vol.update_layout(showlegend=False)
+        st.plotly_chart(fig_vol, use_container_width=True)
+
+    if not roll_sh.empty:
+        fig_sh = px.line(
+            roll_sh,
+            labels={"value": "Sharpe", "index": "Date"},
+            title=f"Rolling {rwin}-period Sharpe — {sel_ticker}",
+        )
+        fig_sh.update_layout(showlegend=False)
+        st.plotly_chart(fig_sh, use_container_width=True)
+
+    if not roll_beta.empty:
+        fig_beta = px.line(
+            roll_beta,
+            labels={"value": "Beta", "index": "Date"},
+            title=f"Rolling {rwin}-period beta: {sel_ticker} vs {sel_benchmark}",
+        )
+        fig_beta.update_layout(showlegend=False)
+        st.plotly_chart(fig_beta, use_container_width=True)
+
+    if not dd.empty:
+        fig_dd = px.line(
+            dd,
+            labels={"value": "Drawdown", "index": "Date"},
+            title=f"Drawdown path — {sel_ticker}",
+        )
+        fig_dd.add_hline(y=float(bear_threshold), line_dash="dash", line_color="red")
+        fig_dd.update_layout(showlegend=False)
+        st.plotly_chart(fig_dd, use_container_width=True)
+
+    if regime.empty:
+        st.info("Not enough data to label regimes.")
+    else:
+        pct_bull = float((regime == "Bull").mean() * 100.0)
+        pct_bear = float((regime == "Bear").mean() * 100.0)
+        current_regime = regime.iloc[-1]
+        current_dd = float(dd.dropna().iloc[-1]) if not dd.dropna().empty else float("nan")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("% time Bull", f"{pct_bull:.1f}%")
+        s2.metric("% time Bear", f"{pct_bear:.1f}%")
+        s3.metric("Current regime", str(current_regime))
+        s4.metric("Current drawdown", f"{current_dd:.2%}")
